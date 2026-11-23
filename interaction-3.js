@@ -61,9 +61,10 @@ function deviceTurned() {
 
 //==========================================================================================
 // INTERACTION 3: phone POINTED STRAIGHT UP  ->  BRASS (brass.wasm)
-// Use case: a "virtual trumpet" / fanfare. Raising the phone towards the sky imitates
-// lifting a trumpet to announce something. The closer the phone points straight up,
-// the stronger you "blow" (higher breath pressure = louder brass); lowering it stops the sound.
+// Use case: shoulder rehabilitation exercise. The patient holds the phone and raises
+// the arm until the phone points straight up. A brass "fanfare" grows louder the closer
+// the arm gets to fully vertical, so the sound both shows how far the arm is raised
+// (without looking at a screen) and rewards reaching the goal - like a trumpet celebrating.
 //==========================================================================================
 let pMin = 0, pMax = 1;
 

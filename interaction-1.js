@@ -71,6 +71,9 @@ let fMin = 150, fMax = 2000;
 function onDspReady() {
     const [mn, mx] = getMinMaxParam("/drop/freq/0x00");
     if (mn !== undefined) { fMin = mn; fMax = mx; }
+    // less reverb -> cleaner, more "water-like" bubbles, no washy background noise
+    dspNode.setParamValue("/drop/Freeverb/Wet", 0.08);
+    dspNode.setParamValue("/drop/Freeverb/0x00/RoomSize", 0.2);
 }
 
 function accelerationChange(accx, accy, accz) {}
@@ -78,13 +81,14 @@ function accelerationChange(accx, accy, accz) {}
 function rotationChange(rotx, roty, rotz) {
     if (!audioOn()) return;
     const tilt = Math.max(Math.abs(rotx), Math.abs(roty));   // 0 when lying flat
-    if (tilt < 2) return;                                     // level -> silence
+    if (tilt < 3) return;                                     // level -> silence
     const t = Math.min(tilt, 30) / 30;                        // 0..1
-    const interval = 600 - 520 * t;                           // 600 ms .. 80 ms between bubbles
+    const interval = 900 - 650 * t;                           // 900 ms .. 250 ms between bubbles
     if (millis() - lastBubble > interval) {
         lastBubble = millis();
-        dspNode.setParamValue("/drop/freq/0x00", fMin + (Math.min(fMax, 1500) - fMin) * t);
-        playBubble();
+        // set the pitch first, then trigger, so the pitch doesn't jump in the middle of a bubble
+        dspNode.setParamValue("/drop/freq/0x00", 350 + 650 * t);   // 350 Hz (slight) .. 1000 Hz (very tilted)
+        setTimeout(playBubble, 10);
     }
 }
 
@@ -101,6 +105,6 @@ function deviceShaken() {
 // Desktop testing: click = one bubble, pitch from mouse x-position
 function mousePressed() {
     if (!audioOn()) return;
-    dspNode.setParamValue("/drop/freq/0x00", fMin + (Math.min(fMax, 1500) - fMin) * (mouseX / windowWidth));
-    playBubble();
+    dspNode.setParamValue("/drop/freq/0x00", 350 + 650 * (mouseX / windowWidth));
+    setTimeout(playBubble, 10);
 }

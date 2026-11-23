@@ -86,12 +86,24 @@ window.addEventListener("devicemotion", (e) => {
     }
 });
 
-function onDspReady() {}
+function onDspReady() {
+    // sharper, brighter strike -> sounds more like an alarm bell than a soft, ethereal church bell
+    dspNode.setParamValue("/englishBell/strikeSharpness", 3);
+    dspNode.setParamValue("/englishBell/strikeCutOff", 12000);
+    dspNode.setParamValue("/englishBell/strikePosition", 2);
+}
 
+function strike() {
+    dspNode.setParamValue("/englishBell/gate", 1);
+    setTimeout(() => dspNode.setParamValue("/englishBell/gate", 0), 60);
+}
+
+// Alarm pattern: three quick strikes "ding-ding-ding" (urgent, like an alarm)
 function ringBell() {
     if (!audioOn()) return;
-    dspNode.setParamValue("/englishBell/gate", 1);
-    setTimeout(() => dspNode.setParamValue("/englishBell/gate", 0), 100);
+    strike();
+    setTimeout(strike, 250);
+    setTimeout(strike, 500);
 }
 
 function accelerationChange(accx, accy, accz) {}
