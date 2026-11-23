@@ -1,13 +1,21 @@
 //==========================================================================================
 // AUDIO SETUP
+//------------------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------------------
+// Edit just where you're asked to!
+//------------------------------------------------------------------------------------------
+//
 //==========================================================================================
 let dspNode = null;
 let dspNodeParams = null;
 let jsonParams = null;
 
+// Change here to ("tuono") depending on your wasm file name
 const dspName = "bells";
 const instance = new FaustWasm2ScriptProcessor(dspName);
 
+// output to window or npm package module
 if (typeof module === "undefined") {
     window[dspName] = instance;
 } else {
@@ -16,6 +24,7 @@ if (typeof module === "undefined") {
     module.exports = exp;
 }
 
+// The name should be the same as the WASM file, so change tuono with brass if you use brass.wasm
 bells.createDSP(audioContext, 1024)
     .then(node => {
         dspNode = node;
@@ -23,31 +32,51 @@ bells.createDSP(audioContext, 1024)
         console.log('params: ', dspNode.getParams());
         const jsonString = dspNode.getJSON();
         jsonParams = JSON.parse(jsonString)["ui"][0]["items"];
-        dspNodeParams = jsonParams;
-        onDspReady();
+        dspNodeParams = jsonParams
+        // const exampleMinMaxParam = findByAddress(dspNodeParams, "/thunder/rumble");
+        // // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
+        // const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
+        // console.log('Min value:', exampleMinValue, 'Max value:', exampleMaxValue);
     });
 
-// Finds the full parameter address whose last part matches `suffix`
-// (e.g. "density" -> "/rain/density"), so we don't depend on group names.
-function findAddress(suffix) {
-    const params = dspNode ? dspNode.getParams() : [];
-    const hit = params.find(a => a.endsWith("/" + suffix));
-    if (!hit) console.warn("Parameter not found:", suffix, "available:", params);
-    return hit;
+
+//==========================================================================================
+// INTERACTIONS
+//------------------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------------------
+// Edit the next functions to create interactions
+// Decide which parameters you're using and then use playAudio to play the Audio
+//------------------------------------------------------------------------------------------
+//
+//==========================================================================================
+
+// INTERACTION 2: the phone free falls for more than 30 cm -> Bells (alarm)
+// Use case: fall detection / drop alarm.
+// p5 gives the acceleration WITHOUT gravity (multiplied by 2): ~0 when the phone is still,
+// ~19.6 (2 x 9.81) in free fall. Falling 30 cm takes about 0.25 s, so we require ~0.22 s.
+let fallStart = null;
+let lastRing = 0;
+
+function accelerationChange(accx, accy, accz) {
+    const mag = Math.sqrt(accx * accx + accy * accy + accz * accz);
+    if (mag > 14 && mag < 26) {                       // close to 2 x g -> falling
+        if (fallStart === null) fallStart = millis();
+        if (millis() - fallStart > 220 && millis() - lastRing > 1500) {
+            lastRing = millis();
+            playAudio();
+        }
+    } else {
+        fallStart = null;
+    }
 }
 
-function setParam(suffix, value) {
-    const addr = findAddress(suffix);
-    if (addr) dspNode.setParamValue(addr, value);
+function rotationChange(rotx, roty, rotz) {
 }
 
-function audioOn() {
-    return dspNode && audioContext.state !== 'suspended';
-}
-
-function getMinMaxParam(address) {
-    const p = findByAddress(dspNodeParams, address);
-    return getParamMinMax(p);
+function mousePressed() {
+    // playAudio()
+    // Use this for debugging from the desktop!
 }
 
 function deviceMoved() {
@@ -58,61 +87,47 @@ function deviceMoved() {
 function deviceTurned() {
     threshVals[1] = turnAxis;
 }
-
-//==========================================================================================
-// INTERACTION 2: phone FREE FALLS for more than 30 cm  ->  BELLS (bells.wasm)
-// Use case: drop alarm / fall detection (e.g. for elderly people, or to find a dropped
-// phone). A bell is a universally understood alert signal, clearly audible and distinct
-// from everyday sounds, so it is ideal to call attention to the event.
-//==========================================================================================
-// In free fall the accelerometer (including gravity) reads close to 0.
-// Falling 30 cm takes about sqrt(2*0.3/9.81) = 0.25 s, so we require ~0.22 s of free fall.
-let fallStart = null;
-let lastRing = 0;
-
-window.addEventListener("devicemotion", (e) => {
-    const a = e.accelerationIncludingGravity;
-    if (!a || a.x === null) return;
-    const mag = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
-    const now = performance.now();
-    if (mag < 3) {                              // much less than gravity (9.81) -> falling
-        if (fallStart === null) fallStart = now;
-        if (now - fallStart > 220 && now - lastRing > 1500) {
-            lastRing = now;
-            ringBell();
-        }
-    } else {
-        fallStart = null;
-    }
-});
-
-function onDspReady() {
-    // sharper, brighter strike -> sounds more like an alarm bell than a soft, ethereal church bell
-    dspNode.setParamValue("/englishBell/strikeSharpness", 3);
-    dspNode.setParamValue("/englishBell/strikeCutOff", 12000);
-    dspNode.setParamValue("/englishBell/strikePosition", 2);
-}
-
-function strike() {
-    dspNode.setParamValue("/englishBell/gate", 1);
-    setTimeout(() => dspNode.setParamValue("/englishBell/gate", 0), 60);
-}
-
-// Alarm pattern: three quick strikes "ding-ding-ding" (urgent, like an alarm)
-function ringBell() {
-    if (!audioOn()) return;
-    strike();
-    setTimeout(strike, 250);
-    setTimeout(strike, 500);
-}
-
-function accelerationChange(accx, accy, accz) {}
-function rotationChange(rotx, roty, rotz) {}
-
 function deviceShaken() {
     shaketimer = millis();
     statusLabels[0].style("color", "pink");
 }
 
-// Desktop testing: click = bell
-function mousePressed() { ringBell(); }
+function getMinMaxParam(address) {
+    const exampleMinMaxParam = findByAddress(dspNodeParams, address);
+    // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
+    const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
+    console.log('Min value:', exampleMinValue, 'Max value:', exampleMaxValue);
+    return [exampleMinValue, exampleMaxValue]
+}
+
+//==========================================================================================
+// AUDIO INTERACTION
+//------------------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------------------
+// Edit here to define your audio controls 
+//------------------------------------------------------------------------------------------
+//
+//==========================================================================================
+
+function playAudio() {
+    if (!dspNode) {
+        return;
+    }
+    if (audioContext.state === 'suspended') {
+        return;
+    }
+    // sharper, brighter strike -> sounds more like an alarm bell than a soft church bell
+    dspNode.setParamValue("/englishBell/strikeSharpness", 3)
+    dspNode.setParamValue("/englishBell/strikeCutOff", 12000)
+    dspNode.setParamValue("/englishBell/strikePosition", 2)
+    // three quick strikes: ding-ding-ding
+    for (let i = 0; i < 3; i++) {
+        setTimeout(() => { dspNode.setParamValue("/englishBell/gate", 1) }, i * 250);
+        setTimeout(() => { dspNode.setParamValue("/englishBell/gate", 0) }, i * 250 + 60);
+    }
+}
+
+//==========================================================================================
+// END
+//==========================================================================================

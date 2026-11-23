@@ -1,13 +1,21 @@
 //==========================================================================================
 // AUDIO SETUP
+//------------------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------------------
+// Edit just where you're asked to!
+//------------------------------------------------------------------------------------------
+//
 //==========================================================================================
 let dspNode = null;
 let dspNodeParams = null;
 let jsonParams = null;
 
+// Change here to ("tuono") depending on your wasm file name
 const dspName = "drop";
 const instance = new FaustWasm2ScriptProcessor(dspName);
 
+// output to window or npm package module
 if (typeof module === "undefined") {
     window[dspName] = instance;
 } else {
@@ -16,6 +24,7 @@ if (typeof module === "undefined") {
     module.exports = exp;
 }
 
+// The name should be the same as the WASM file, so change tuono with brass if you use brass.wasm
 drop.createDSP(audioContext, 1024)
     .then(node => {
         dspNode = node;
@@ -23,31 +32,48 @@ drop.createDSP(audioContext, 1024)
         console.log('params: ', dspNode.getParams());
         const jsonString = dspNode.getJSON();
         jsonParams = JSON.parse(jsonString)["ui"][0]["items"];
-        dspNodeParams = jsonParams;
-        onDspReady();
+        dspNodeParams = jsonParams
+        // const exampleMinMaxParam = findByAddress(dspNodeParams, "/thunder/rumble");
+        // // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
+        // const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
+        // console.log('Min value:', exampleMinValue, 'Max value:', exampleMaxValue);
     });
 
-// Finds the full parameter address whose last part matches `suffix`
-// (e.g. "density" -> "/rain/density"), so we don't depend on group names.
-function findAddress(suffix) {
-    const params = dspNode ? dspNode.getParams() : [];
-    const hit = params.find(a => a.endsWith("/" + suffix));
-    if (!hit) console.warn("Parameter not found:", suffix, "available:", params);
-    return hit;
+
+//==========================================================================================
+// INTERACTIONS
+//------------------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------------------
+// Edit the next functions to create interactions
+// Decide which parameters you're using and then use playAudio to play the Audio
+//------------------------------------------------------------------------------------------
+//
+//==========================================================================================
+
+// INTERACTION 1: the phone is used to measure the angle of a surface, like a level -> Bubbles
+// Like the air bubble in a real spirit level: the more tilted the surface, the faster and
+// higher-pitched the bubbles. When the surface is level, it is silent.
+let lastBubble = 0;
+
+function accelerationChange(accx, accy, accz) {
+    // playAudio()
 }
 
-function setParam(suffix, value) {
-    const addr = findAddress(suffix);
-    if (addr) dspNode.setParamValue(addr, value);
+function rotationChange(rotx, roty, rotz) {
+    const tilt = Math.max(Math.abs(rotx), Math.abs(roty));   // 0 when the phone lies flat
+    if (tilt < 3) return;                                     // level -> silence
+    const t = Math.min(tilt, 30) / 30;                        // 0..1
+    const interval = 900 - 650 * t;                           // 900 ms .. 250 ms between bubbles
+    if (millis() - lastBubble > interval) {
+        lastBubble = millis();
+        playAudio(t);
+    }
 }
 
-function audioOn() {
-    return dspNode && audioContext.state !== 'suspended';
-}
-
-function getMinMaxParam(address) {
-    const p = findByAddress(dspNodeParams, address);
-    return getParamMinMax(p);
+function mousePressed() {
+    playAudio(mouseX / windowWidth)
+    // Use this for debugging from the desktop!
 }
 
 function deviceMoved() {
@@ -58,53 +84,47 @@ function deviceMoved() {
 function deviceTurned() {
     threshVals[1] = turnAxis;
 }
-
-//==========================================================================================
-// INTERACTION 1: phone used as a LEVEL (spirit level)  ->  BUBBLES (drop.wasm)
-// Use case: hanging a shelf without looking at the screen. Like the air bubble in a
-// real spirit level: the more the surface is tilted, the faster and higher-pitched the
-// bubbles. When the surface is level, it goes silent.
-//==========================================================================================
-let lastBubble = 0;
-let fMin = 150, fMax = 2000;
-
-function onDspReady() {
-    const [mn, mx] = getMinMaxParam("/drop/freq/0x00");
-    if (mn !== undefined) { fMin = mn; fMax = mx; }
-    // less reverb -> cleaner, more "water-like" bubbles, no washy background noise
-    dspNode.setParamValue("/drop/Freeverb/Wet", 0.08);
-    dspNode.setParamValue("/drop/Freeverb/0x00/RoomSize", 0.2);
-}
-
-function accelerationChange(accx, accy, accz) {}
-
-function rotationChange(rotx, roty, rotz) {
-    if (!audioOn()) return;
-    const tilt = Math.max(Math.abs(rotx), Math.abs(roty));   // 0 when lying flat
-    if (tilt < 3) return;                                     // level -> silence
-    const t = Math.min(tilt, 30) / 30;                        // 0..1
-    const interval = 900 - 650 * t;                           // 900 ms .. 250 ms between bubbles
-    if (millis() - lastBubble > interval) {
-        lastBubble = millis();
-        // set the pitch first, then trigger, so the pitch doesn't jump in the middle of a bubble
-        dspNode.setParamValue("/drop/freq/0x00", 350 + 650 * t);   // 350 Hz (slight) .. 1000 Hz (very tilted)
-        setTimeout(playBubble, 10);
-    }
-}
-
-function playBubble() {
-    dspNode.setParamValue("/drop/drop", 1);
-    setTimeout(() => dspNode.setParamValue("/drop/drop", 0), 30);
-}
-
 function deviceShaken() {
     shaketimer = millis();
     statusLabels[0].style("color", "pink");
 }
 
-// Desktop testing: click = one bubble, pitch from mouse x-position
-function mousePressed() {
-    if (!audioOn()) return;
-    dspNode.setParamValue("/drop/freq/0x00", 350 + 650 * (mouseX / windowWidth));
-    setTimeout(playBubble, 10);
+function getMinMaxParam(address) {
+    const exampleMinMaxParam = findByAddress(dspNodeParams, address);
+    // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
+    const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
+    console.log('Min value:', exampleMinValue, 'Max value:', exampleMaxValue);
+    return [exampleMinValue, exampleMaxValue]
 }
+
+//==========================================================================================
+// AUDIO INTERACTION
+//------------------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------------------
+// Edit here to define your audio controls 
+//------------------------------------------------------------------------------------------
+//
+//==========================================================================================
+
+function playAudio(t) {
+    if (!dspNode) {
+        return;
+    }
+    if (audioContext.state === 'suspended') {
+        return;
+    }
+    // Edit here the addresses ("/thunder/rumble") depending on your WASM controls (you can see 
+    // them printed on the console of your browser when you load the page)
+    // For example if you change to a bell sound, here you could use "/churchBell/gate" instead of
+    // "/thunder/rumble".
+    dspNode.setParamValue("/drop/Freeverb/Wet", 0.08)             // less reverb -> clearer bubbles
+    dspNode.setParamValue("/drop/Freeverb/0x00/RoomSize", 0.2)
+    dspNode.setParamValue("/drop/freq/0x00", 350 + 650 * t)       // more tilt -> higher pitch (range 150-2000)
+    dspNode.setParamValue("/drop/drop", 1)
+    setTimeout(() => { dspNode.setParamValue("/drop/drop", 0) }, 30);
+}
+
+//==========================================================================================
+// END
+//==========================================================================================

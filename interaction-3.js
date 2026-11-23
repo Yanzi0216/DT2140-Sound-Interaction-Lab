@@ -1,13 +1,21 @@
 //==========================================================================================
 // AUDIO SETUP
+//------------------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------------------
+// Edit just where you're asked to!
+//------------------------------------------------------------------------------------------
+//
 //==========================================================================================
 let dspNode = null;
 let dspNodeParams = null;
 let jsonParams = null;
 
+// Change here to ("tuono") depending on your wasm file name
 const dspName = "brass";
 const instance = new FaustWasm2ScriptProcessor(dspName);
 
+// output to window or npm package module
 if (typeof module === "undefined") {
     window[dspName] = instance;
 } else {
@@ -16,6 +24,7 @@ if (typeof module === "undefined") {
     module.exports = exp;
 }
 
+// The name should be the same as the WASM file, so change tuono with brass if you use brass.wasm
 brass.createDSP(audioContext, 1024)
     .then(node => {
         dspNode = node;
@@ -23,31 +32,38 @@ brass.createDSP(audioContext, 1024)
         console.log('params: ', dspNode.getParams());
         const jsonString = dspNode.getJSON();
         jsonParams = JSON.parse(jsonString)["ui"][0]["items"];
-        dspNodeParams = jsonParams;
-        onDspReady();
+        dspNodeParams = jsonParams
+        // const exampleMinMaxParam = findByAddress(dspNodeParams, "/thunder/rumble");
+        // // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
+        // const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
+        // console.log('Min value:', exampleMinValue, 'Max value:', exampleMaxValue);
     });
 
-// Finds the full parameter address whose last part matches `suffix`
-// (e.g. "density" -> "/rain/density"), so we don't depend on group names.
-function findAddress(suffix) {
-    const params = dspNode ? dspNode.getParams() : [];
-    const hit = params.find(a => a.endsWith("/" + suffix));
-    if (!hit) console.warn("Parameter not found:", suffix, "available:", params);
-    return hit;
+
+//==========================================================================================
+// INTERACTIONS
+//------------------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------------------
+// Edit the next functions to create interactions
+// Decide which parameters you're using and then use playAudio to play the Audio
+//------------------------------------------------------------------------------------------
+//
+//==========================================================================================
+
+function accelerationChange(accx, accy, accz) {
+    // playAudio()
 }
 
-function setParam(suffix, value) {
-    const addr = findAddress(suffix);
-    if (addr) dspNode.setParamValue(addr, value);
+// INTERACTION 3: the phone is used to point straight up -> Musical instrument (brass)
+// rotationX is ~0 when flat and ~90 when the phone points straight up.
+function rotationChange(rotx, roty, rotz) {
+    playAudio(constrain((rotx - 50) / 40, 0, 1));   // 50 deg -> silent, 90 deg -> full
 }
 
-function audioOn() {
-    return dspNode && audioContext.state !== 'suspended';
-}
-
-function getMinMaxParam(address) {
-    const p = findByAddress(dspNodeParams, address);
-    return getParamMinMax(p);
+function mousePressed() {
+    playAudio(mouseX/windowWidth)
+    // Use this for debugging from the desktop!
 }
 
 function deviceMoved() {
@@ -58,49 +74,41 @@ function deviceMoved() {
 function deviceTurned() {
     threshVals[1] = turnAxis;
 }
-
-//==========================================================================================
-// INTERACTION 3: phone POINTED STRAIGHT UP  ->  BRASS (brass.wasm)
-// Use case: shoulder rehabilitation exercise. The patient holds the phone and raises
-// the arm until the phone points straight up. A brass "fanfare" grows louder the closer
-// the arm gets to fully vertical, so the sound both shows how far the arm is raised
-// (without looking at a screen) and rewards reaching the goal - like a trumpet celebrating.
-//==========================================================================================
-let pMin = 0, pMax = 1;
-
-function onDspReady() {
-    const [mn, mx] = getMinMaxParam("/brass/blower/pressure");
-    if (mn !== undefined) { pMin = mn; pMax = mx; }
-    dspNode.setParamValue("/brass/blower/pressure", 0);
-    dspNode.setParamValue("/brass/brassModel/mute", 0);   // open (louder) trumpet
-}
-
-// The brass model only starts sounding above a certain breath pressure,
-// so t = 0 -> silence, t > 0 -> pressure from 0.55 (soft) to 1.0 (full).
-function blow(t) {
-    dspNode.setParamValue("/brass/blower/pressure", t <= 0 ? 0 : 0.55 + 0.45 * t);
-}
-
-function accelerationChange(accx, accy, accz) {}
-
-function rotationChange(rotx, roty, rotz) {
-    if (!audioOn()) return;
-    // rotationX is ~0 when flat and ~90 when the phone's top points straight up
-    const t = constrain((rotx - 50) / 40, 0, 1);   // 50 deg -> silent, 90 deg -> full
-    blow(t);
-}
-
 function deviceShaken() {
     shaketimer = millis();
     statusLabels[0].style("color", "pink");
 }
 
-// Desktop testing: hold mouse = blow, strength from mouse x-position
-function mousePressed() {
-    if (!audioOn()) return;
-    blow(0.05 + 0.95 * (mouseX / windowWidth));
+function getMinMaxParam(address) {
+    const exampleMinMaxParam = findByAddress(dspNodeParams, address);
+    // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
+    const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
+    console.log('Min value:', exampleMinValue, 'Max value:', exampleMaxValue);
+    return [exampleMinValue, exampleMaxValue]
 }
-function mouseReleased() {
-    if (!audioOn()) return;
-    blow(0);
+
+//==========================================================================================
+// AUDIO INTERACTION
+//------------------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------------------
+// Edit here to define your audio controls 
+//------------------------------------------------------------------------------------------
+//
+//==========================================================================================
+
+function playAudio(pressure) {
+    if (!dspNode) {
+        return;
+    }
+    if (audioContext.state === 'suspended') {
+        return;
+    }
+    // the brass model only sounds above ~0.5 breath pressure, so 0 -> silent, >0 -> 0.55..1
+    dspNode.setParamValue("/brass/brassModel/mute", 0)
+    dspNode.setParamValue("/brass/blower/pressure", pressure <= 0 ? 0 : 0.55 + 0.45 * pressure)
 }
+
+//==========================================================================================
+// END
+//==========================================================================================
