@@ -1,21 +1,13 @@
 //==========================================================================================
 // AUDIO SETUP
-//------------------------------------------------------------------------------------------
-//
-//------------------------------------------------------------------------------------------
-// Edit just where you're asked to!
-//------------------------------------------------------------------------------------------
-//
 //==========================================================================================
 let dspNode = null;
 let dspNodeParams = null;
 let jsonParams = null;
 
-// Change here to ("tuono") depending on your wasm file name
 const dspName = "bells";
 const instance = new FaustWasm2ScriptProcessor(dspName);
 
-// output to window or npm package module
 if (typeof module === "undefined") {
     window[dspName] = instance;
 } else {
@@ -24,7 +16,6 @@ if (typeof module === "undefined") {
     module.exports = exp;
 }
 
-// The name should be the same as the WASM file, so change tuono with brass if you use brass.wasm
 bells.createDSP(audioContext, 1024)
     .then(node => {
         dspNode = node;
@@ -32,35 +23,31 @@ bells.createDSP(audioContext, 1024)
         console.log('params: ', dspNode.getParams());
         const jsonString = dspNode.getJSON();
         jsonParams = JSON.parse(jsonString)["ui"][0]["items"];
-        dspNodeParams = jsonParams
-        // const exampleMinMaxParam = findByAddress(dspNodeParams, "/thunder/rumble");
-        // // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
-        // const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
-        // console.log('Min value:', exampleMinValue, 'Max value:', exampleMaxValue);
+        dspNodeParams = jsonParams;
+        onDspReady();
     });
 
-
-//==========================================================================================
-// INTERACTIONS
-//------------------------------------------------------------------------------------------
-//
-//------------------------------------------------------------------------------------------
-// Edit the next functions to create interactions
-// Decide which parameters you're using and then use playAudio to play the Audio
-//------------------------------------------------------------------------------------------
-//
-//==========================================================================================
-
-function accelerationChange(accx, accy, accz) {
-    // playAudio()
+// Finds the full parameter address whose last part matches `suffix`
+// (e.g. "density" -> "/rain/density"), so we don't depend on group names.
+function findAddress(suffix) {
+    const params = dspNode ? dspNode.getParams() : [];
+    const hit = params.find(a => a.endsWith("/" + suffix));
+    if (!hit) console.warn("Parameter not found:", suffix, "available:", params);
+    return hit;
 }
 
-function rotationChange(rotx, roty, rotz) {
+function setParam(suffix, value) {
+    const addr = findAddress(suffix);
+    if (addr) dspNode.setParamValue(addr, value);
 }
 
-function mousePressed() {
-    // playAudio()
-    // Use this for debugging from the desktop!
+function audioOn() {
+    return dspNode && audioContext.state !== 'suspended';
+}
+
+function getMinMaxParam(address) {
+    const p = findByAddress(dspNodeParams, address);
+    return getParamMinMax(p);
 }
 
 function deviceMoved() {
@@ -71,41 +58,49 @@ function deviceMoved() {
 function deviceTurned() {
     threshVals[1] = turnAxis;
 }
+
+//==========================================================================================
+// INTERACTION 2: phone FREE FALLS for more than 30 cm  ->  BELLS (bells.wasm)
+// Use case: drop alarm / fall detection (e.g. for elderly people, or to find a dropped
+// phone). A bell is a universally understood alert signal, clearly audible and distinct
+// from everyday sounds, so it is ideal to call attention to the event.
+//==========================================================================================
+// In free fall the accelerometer (including gravity) reads close to 0.
+// Falling 30 cm takes about sqrt(2*0.3/9.81) = 0.25 s, so we require ~0.22 s of free fall.
+let fallStart = null;
+let lastRing = 0;
+
+window.addEventListener("devicemotion", (e) => {
+    const a = e.accelerationIncludingGravity;
+    if (!a || a.x === null) return;
+    const mag = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+    const now = performance.now();
+    if (mag < 3) {                              // much less than gravity (9.81) -> falling
+        if (fallStart === null) fallStart = now;
+        if (now - fallStart > 220 && now - lastRing > 1500) {
+            lastRing = now;
+            ringBell();
+        }
+    } else {
+        fallStart = null;
+    }
+});
+
+function onDspReady() {}
+
+function ringBell() {
+    if (!audioOn()) return;
+    dspNode.setParamValue("/englishBell/gate", 1);
+    setTimeout(() => dspNode.setParamValue("/englishBell/gate", 0), 100);
+}
+
+function accelerationChange(accx, accy, accz) {}
+function rotationChange(rotx, roty, rotz) {}
+
 function deviceShaken() {
     shaketimer = millis();
     statusLabels[0].style("color", "pink");
-    playAudio();
 }
 
-function getMinMaxParam(address) {
-    const exampleMinMaxParam = findByAddress(dspNodeParams, address);
-    // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
-    const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
-    console.log('Min value:', exampleMinValue, 'Max value:', exampleMaxValue);
-    return [exampleMinValue, exampleMaxValue]
-}
-
-//==========================================================================================
-// AUDIO INTERACTION
-//------------------------------------------------------------------------------------------
-//
-//------------------------------------------------------------------------------------------
-// Edit here to define your audio controls 
-//------------------------------------------------------------------------------------------
-//
-//==========================================================================================
-
-function playAudio() {
-    if (!dspNode) {
-        return;
-    }
-    if (audioContext.state === 'suspended') {
-        return;
-    }
-    dspNode.setParamValue("/englishBell/gate", 1)
-    setTimeout(() => { dspNode.setParamValue("/englishBell/gate", 0) }, 100);
-}
-
-//==========================================================================================
-// END
-//==========================================================================================
+// Desktop testing: click = bell
+function mousePressed() { ringBell(); }

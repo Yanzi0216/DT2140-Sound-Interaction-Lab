@@ -1,21 +1,13 @@
 //==========================================================================================
 // AUDIO SETUP
-//------------------------------------------------------------------------------------------
-//
-//------------------------------------------------------------------------------------------
-// Edit just where you're asked to!
-//------------------------------------------------------------------------------------------
-//
 //==========================================================================================
 let dspNode = null;
 let dspNodeParams = null;
 let jsonParams = null;
 
-// Change here to ("tuono") depending on your wasm file name
-const dspName = "tuono";
+const dspName = "drop";
 const instance = new FaustWasm2ScriptProcessor(dspName);
 
-// output to window or npm package module
 if (typeof module === "undefined") {
     window[dspName] = instance;
 } else {
@@ -24,43 +16,38 @@ if (typeof module === "undefined") {
     module.exports = exp;
 }
 
-// The name should be the same as the WASM file, so change tuono with brass if you use brass.wasm
-tuono.createDSP(audioContext, 1024)
+drop.createDSP(audioContext, 1024)
     .then(node => {
         dspNode = node;
         dspNode.connect(audioContext.destination);
         console.log('params: ', dspNode.getParams());
         const jsonString = dspNode.getJSON();
         jsonParams = JSON.parse(jsonString)["ui"][0]["items"];
-        dspNodeParams = jsonParams
-        // const exampleMinMaxParam = findByAddress(dspNodeParams, "/thunder/rumble");
-        // // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
-        // const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
-        // console.log('Min value:', exampleMinValue, 'Max value:', exampleMaxValue);
+        dspNodeParams = jsonParams;
+        onDspReady();
     });
 
-
-//==========================================================================================
-// INTERACTIONS
-//------------------------------------------------------------------------------------------
-//
-//------------------------------------------------------------------------------------------
-// Edit the next functions to create interactions
-// Decide which parameters you're using and then use playAudio to play the Audio
-//------------------------------------------------------------------------------------------
-//
-//==========================================================================================
-
-function accelerationChange(accx, accy, accz) {
-    // playAudio()
+// Finds the full parameter address whose last part matches `suffix`
+// (e.g. "density" -> "/rain/density"), so we don't depend on group names.
+function findAddress(suffix) {
+    const params = dspNode ? dspNode.getParams() : [];
+    const hit = params.find(a => a.endsWith("/" + suffix));
+    if (!hit) console.warn("Parameter not found:", suffix, "available:", params);
+    return hit;
 }
 
-function rotationChange(rotx, roty, rotz) {
+function setParam(suffix, value) {
+    const addr = findAddress(suffix);
+    if (addr) dspNode.setParamValue(addr, value);
 }
 
-function mousePressed() {
-    playAudio()
-    // Use this for debugging from the desktop!
+function audioOn() {
+    return dspNode && audioContext.state !== 'suspended';
+}
+
+function getMinMaxParam(address) {
+    const p = findByAddress(dspNodeParams, address);
+    return getParamMinMax(p);
 }
 
 function deviceMoved() {
@@ -71,45 +58,49 @@ function deviceMoved() {
 function deviceTurned() {
     threshVals[1] = turnAxis;
 }
+
+//==========================================================================================
+// INTERACTION 1: phone used as a LEVEL (spirit level)  ->  BUBBLES (drop.wasm)
+// Use case: hanging a shelf without looking at the screen. Like the air bubble in a
+// real spirit level: the more the surface is tilted, the faster and higher-pitched the
+// bubbles. When the surface is level, it goes silent.
+//==========================================================================================
+let lastBubble = 0;
+let fMin = 150, fMax = 2000;
+
+function onDspReady() {
+    const [mn, mx] = getMinMaxParam("/drop/freq/0x00");
+    if (mn !== undefined) { fMin = mn; fMax = mx; }
+}
+
+function accelerationChange(accx, accy, accz) {}
+
+function rotationChange(rotx, roty, rotz) {
+    if (!audioOn()) return;
+    const tilt = Math.max(Math.abs(rotx), Math.abs(roty));   // 0 when lying flat
+    if (tilt < 2) return;                                     // level -> silence
+    const t = Math.min(tilt, 30) / 30;                        // 0..1
+    const interval = 600 - 520 * t;                           // 600 ms .. 80 ms between bubbles
+    if (millis() - lastBubble > interval) {
+        lastBubble = millis();
+        dspNode.setParamValue("/drop/freq/0x00", fMin + (Math.min(fMax, 1500) - fMin) * t);
+        playBubble();
+    }
+}
+
+function playBubble() {
+    dspNode.setParamValue("/drop/drop", 1);
+    setTimeout(() => dspNode.setParamValue("/drop/drop", 0), 30);
+}
+
 function deviceShaken() {
     shaketimer = millis();
     statusLabels[0].style("color", "pink");
-    playAudio();
 }
 
-function getMinMaxParam(address) {
-    const exampleMinMaxParam = findByAddress(dspNodeParams, address);
-    // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
-    const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
-    console.log('Min value:', exampleMinValue, 'Max value:', exampleMaxValue);
-    return [exampleMinValue, exampleMaxValue]
+// Desktop testing: click = one bubble, pitch from mouse x-position
+function mousePressed() {
+    if (!audioOn()) return;
+    dspNode.setParamValue("/drop/freq/0x00", fMin + (Math.min(fMax, 1500) - fMin) * (mouseX / windowWidth));
+    playBubble();
 }
-
-//==========================================================================================
-// AUDIO INTERACTION
-//------------------------------------------------------------------------------------------
-//
-//------------------------------------------------------------------------------------------
-// Edit here to define your audio controls 
-//------------------------------------------------------------------------------------------
-//
-//==========================================================================================
-
-function playAudio() {
-    if (!dspNode) {
-        return;
-    }
-    if (audioContext.state === 'suspended') {
-        return;
-    }
-    // Edit here the addresses ("/thunder/rumble") depending on your WASM controls (you can see 
-    // them printed on the console of your browser when you load the page)
-    // For example if you change to a bell sound, here you could use "/churchBell/gate" instead of
-    // "/thunder/rumble".
-    dspNode.setParamValue("/thunder/rumble", 1)
-    setTimeout(() => { dspNode.setParamValue("/thunder/rumble", 0) }, 100);
-}
-
-//==========================================================================================
-// END
-//==========================================================================================
